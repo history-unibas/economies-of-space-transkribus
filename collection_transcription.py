@@ -17,6 +17,9 @@ Each step is based on an existing model. The following functions are available:
 PAGE_DROP_NR).
 - Subsequent pages of an excluded page can be skipped
 (PAGE_DROP_STATUS_FOLLOWING).
+- Only process pages that have not already been transcribed
+(DO_IF_NO_HTR_EXIST). A check is made to see whether a particular model has
+been used in the latest transcription version (NAME_HTR_MODEL).
 
 Note: Errors can occur in Transkribus jobs with FINISHED status. In the
 Transkribus Expert Client, errors that occur in the jobs are documented in the
@@ -29,6 +32,7 @@ import logging
 import pandas as pd
 import csv
 import time
+from datetime import datetime
 
 from connect_transkribus import (get_sid, list_collections,
                                  list_documents, get_document_content,
@@ -39,10 +43,20 @@ from connect_transkribus import (get_sid, list_collections,
 LOGFILE_DIR = './collection_transcription.log'
 
 # List of collection ids that are dropped within this process.
-COLL_DROP = [169494, 163061, 170320]
+COLL_DROP = [
+    170320,  # Test Collection Jonas
+    187323,  # StABE_Turmbücher_DH_flow
+    89729,  # StABE_Turmbücher_DH
+    63705,  # StABE_Turmbücher
+    1967875,  # Quick Text Recognition
+    163061,  # HGB_Training
+    169494  # HGB_Experimentell
+    ]
 
 # CSV file, which contains per line a docId of documents to be filtered.
-DOC_FILTER_DIR = './document_filter.csv'
+DOC_FILTER_DIR = './document_filter.csv'  # TODO: HTR (8110 pages)
+# DOC_FILTER_DIR = 'document_filter_other.csv'  # TODO: HTR (0 pages)
+# DOC_FILTER_DIR = 'document_filter_further.csv'  # TODO: P2PaLA, Linefinder, HTR (5303 pages)
 
 # List of page status (of latest page version) that are dropped within this
 # process.
@@ -50,7 +64,7 @@ PAGE_DROP_STATUS = ['DONE']
 
 # Define if subsequent pages of a page with a status defined in
 # PAGE_DROP_STATUS within the same Transkribus document should be dropped.
-PAGE_DROP_STATUS_FOLLOWING = True
+PAGE_DROP_STATUS_FOLLOWING = False
 
 # List of page numbers that are dropped within this process.
 PAGE_DROP_NR = [1, 2]
@@ -83,6 +97,22 @@ LINE_OVERLAP_FRACTION = 0.1
 HTR_ID = 52861  # HGB_FT_M5.2
 DO_WORD_SEG = 'false'
 
+# Define if P2PaLA (text region recognition) will be applied.
+DO_P2PALA = True
+
+# Define if Linefinder (text line recognition) will be applied.
+DO_LINEFINDER = True
+
+# Define if HTR (text recognition) will be applied.
+DO_HTR = True
+
+# Define if process will be applied only if no transcription (HTR) exists.
+DO_IF_NO_HTR_EXIST = True
+NAME_HTR_MODEL = 'PyLaia decoding 2.1.0 - Model: 52861, HGB_FT_M5.2, LM: lm'
+
+# Define if the presence of a transcription is to be tested.
+DO_TEST = True
+
 
 def main():
     # Define the logging environment.
@@ -91,49 +121,16 @@ def main():
                         format='%(asctime)s   %(levelname)s   %(message)s',
                         level=logging.INFO,
                         encoding='utf-8')
+
     logging.info('Script started.')
-
-    # Define which models are applied.
-    do_p2pala = input('Do you want to apply P2PaLA (text region recognition)? '
-                      )
-    if do_p2pala.lower() in ('true', 'yes', 'y', '1'):
-        do_p2pala = True
-    elif do_p2pala.lower() in ('false', 'no', 'n', '0'):
-        do_p2pala = False
-    else:
-        logging.error(f'Your answer is not True or False: {do_p2pala}.')
-        raise
-    logging.info(f'P2PaLA will be applied: {do_p2pala}.')
-    do_linefinder = input('Do you want to apply Linefinder (text line '
-                          'recognition)? ')
-    if do_linefinder.lower() in ('true', 'yes', 'y', '1'):
-        do_linefinder = True
-    elif do_linefinder.lower() in ('false', 'no', 'n', '0'):
-        do_linefinder = False
-    else:
-        logging.error(f'Your answer is not True or False: {do_linefinder}.')
-        raise
-    logging.info(f'Linefinder will be applied: {do_linefinder}.')
-    do_htr = input('Do you want to apply HTR (text recognition)? ')
-    if do_htr.lower() in ('true', 'yes', 'y', '1'):
-        do_htr = True
-    elif do_htr.lower() in ('false', 'no', 'n', '0'):
-        do_htr = False
-    else:
-        logging.error(f'Your answer is not True or False: {do_htr}.')
-        raise
-    logging.info(f'HTR will be applied: {do_htr}.')
-
-    # Define if the presence of a transcription is to be tested.
-    do_test = input('Do you want to analyse presence of a transcription? ')
-    if do_test.lower() in ('true', 'yes', 'y', '1'):
-        do_test = True
-    elif do_test.lower() in ('false', 'no', 'n', '0'):
-        do_test = False
-    else:
-        logging.error(f'Your answer is not True or False: {do_test}.')
-        raise
-    logging.info(f'Test is being performed: {do_test}.')
+    logging.info(f'P2PaLA will be applied: {DO_P2PALA}.')
+    logging.info(f'Linefinder will be applied: {DO_LINEFINDER}.')
+    logging.info(f'HTR will be applied: {DO_HTR}.')
+    logging.info(
+        'HTR will be applied only if no transcription exists: '
+        f'{DO_IF_NO_HTR_EXIST}.'
+        )
+    logging.info(f'Test is being performed: {DO_TEST}.')
 
     # Login to Transkribus.
     user = input('Transkribus user:')
@@ -175,7 +172,36 @@ def main():
                         drop_following_pages = True
                     continue
                 else:
-                    page_nr_selected[page['pageNr']] = page['pageId']
+                    if DO_IF_NO_HTR_EXIST:
+                        # Get all transcript versions of the page and sort
+                        # them by timestamp (latest first).
+                        transcripts = pd.DataFrame(
+                            columns=['status', 'timestamp', 'toolName']
+                            )
+                        for transcript in page['tsList']['transcripts']:
+                            transcripts = pd.concat(
+                                [transcripts,
+                                 pd.DataFrame(
+                                    [[transcript['status'],
+                                      datetime.fromtimestamp(
+                                        transcript['timestamp']/1000
+                                        ),
+                                      transcript.get('toolName')
+                                      ]],
+                                    columns=['status', 'timestamp', 'toolName']
+                                    )
+                                 ],
+                                ignore_index=True
+                                )
+                        transcripts = transcripts.sort_values(
+                            by='timestamp',
+                            ascending=False,
+                            ignore_index=True
+                            )
+                        if transcripts.iloc[0]['toolName'] != NAME_HTR_MODEL:
+                            page_nr_selected[page['pageNr']] = page['pageId']
+                    else:
+                        page_nr_selected[page['pageNr']] = page['pageId']
 
             # Omit layout analysis and text recognition if there are no pages
             # to consider.
@@ -187,7 +213,7 @@ def main():
             for p in list(page_nr_selected.values()):
                 pageid_str += f'<pages><pageId>{p}</pageId></pages>'
 
-            if do_p2pala:
+            if DO_P2PALA:
                 # Generate xml for post request for P2PaLA job.
                 p2pala_xml = '<?xml version="1.0" encoding="UTF-8" '\
                     'standalone="yes"?>'\
@@ -223,7 +249,7 @@ def main():
                     job_impl='P2PaLAJob'
                     )
 
-            if do_linefinder:
+            if DO_LINEFINDER:
                 # Generate xml for post request for line finder job.
                 linefinder_xml = '<?xml version="1.0" encoding="UTF-8" '\
                     'standalone="yes"?>'\
@@ -260,7 +286,7 @@ def main():
                     sid=sid
                     )
 
-            if do_htr:
+            if DO_HTR:
                 # Create a string of selected pages for HTR request.
                 pages_str = ','.join(
                     [str(key) for key in page_nr_selected.keys()]
@@ -276,7 +302,7 @@ def main():
                     do_word_seg=DO_WORD_SEG
                     )
 
-            if do_test:
+            if DO_TEST:
                 # Search for pages with no version with nrOfCharsInLines > 0.
                 doc_content = get_document_content(
                     colid=row[1]['colId'], docid=doc['docId'], sid=sid
