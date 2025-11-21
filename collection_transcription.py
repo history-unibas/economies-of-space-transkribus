@@ -54,7 +54,7 @@ COLL_DROP = [
     ]
 
 # CSV file, which contains per line a docId of documents to be filtered.
-DOC_FILTER_DIR = './document_filter.csv'  # TODO: HTR (8110 pages)
+DOC_FILTER_DIR = './document_filter.csv'  # TODO: P2PaLA, Linefinder, HTR (8110 pages)
 # DOC_FILTER_DIR = 'document_filter_other.csv'  # TODO: HTR (0 pages)
 # DOC_FILTER_DIR = 'document_filter_further.csv'  # TODO: P2PaLA, Linefinder, HTR (5303 pages)
 
@@ -98,7 +98,7 @@ HTR_ID = 52861  # HGB_FT_M5.2
 DO_WORD_SEG = 'false'
 
 # Define if P2PaLA (text region recognition) will be applied.
-DO_P2PALA = True
+DO_P2PALA = False
 
 # Define if Linefinder (text line recognition) will be applied.
 DO_LINEFINDER = True
@@ -108,7 +108,11 @@ DO_HTR = True
 
 # Define if process will be applied only if no transcription (HTR) exists.
 DO_IF_NO_HTR_EXIST = True
-NAME_HTR_MODEL = 'PyLaia decoding 2.1.0 - Model: 52861, HGB_FT_M5.2, LM: lm'
+NAME_HTR_MODEL = [
+    'PyLaia decoding 2.1.0 - Model: 52861, HGB_FT_M5.2, LM: lm',
+    'PyLaia decoding 2.33.1 - Model: 52861, HGB_FT_M5.2, LM: lm',
+    'PyLaia decoding 2.34.0 - Model: 52861, HGB_FT_M5.2, LM: lm'
+    ]
 
 # Define if the presence of a transcription is to be tested.
 DO_TEST = True
@@ -198,7 +202,9 @@ def main():
                             ascending=False,
                             ignore_index=True
                             )
-                        if transcripts.iloc[0]['toolName'] != NAME_HTR_MODEL:
+                        if (transcripts.iloc[0]['toolName']
+                            not in NAME_HTR_MODEL
+                            ):
                             page_nr_selected[page['pageNr']] = page['pageId']
                     else:
                         page_nr_selected[page['pageNr']] = page['pageId']
