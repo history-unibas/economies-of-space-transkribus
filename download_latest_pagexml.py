@@ -1,4 +1,4 @@
-"""Download the latest pagexml of all pages over several collections.
+"""Download latest pagexml and images of all pages over several collections.
 
 With this module, Transkribus pagexml can be exported directly to a target
 directory "DEST_DIR". Only the most recent pagexml is exported for each
@@ -15,6 +15,12 @@ Special case collection 'HGB_Training':
 exported.
 - If available, the latest pageXML version with status 'GT' (ground truth) is
 exported instead of the latest version with any status.
+
+If desired, the image of the page being viewed can also be exported.
+- Use parameter DOWNLOAD_IMAGES to define whether the images should be
+exported.
+- Images are saved in a similar structure as the pagexmls, but within the
+DEST_DIR_IMAGES directory.
 """
 
 
@@ -24,16 +30,26 @@ import os
 
 
 from connect_transkribus import (get_sid, list_collections, list_documents,
-                                 get_document_content, download_pagexml)
+                                 get_document_content, download_pagexml,
+                                 download_image)
 
 
 # Define which collections are to be processed.
 COLNAME_PREFIX = 'HGB_1_'
-COLNAME_TRAINING = ['HGB_Training', 'HGB_Experimentell']
+COLNAME_TRAINING = ['HGB_Training']
 
 # Define target directory for pageXMLs.
-DEST_DIR = ('/mnt/research-storage/Projekt_HGB/HGB_pageXML_'
+DEST_DIR = ('/mnt/research-storage/Projekt_HGB/Export_Transkribus/HGB_pageXML_'
             + datetime.now().strftime('%Y%m%d'))
+
+# Define whether images should be downloaded.
+DOWNLOAD_IMAGES = True
+
+# Define target directory for images.
+DEST_DIR_IMAGES = (
+    '/mnt/research-storage/Projekt_HGB/Export_Transkribus/HGB_images_'
+    + datetime.now().strftime('%Y%m%d')
+    )
 
 
 def main():
@@ -62,6 +78,13 @@ def main():
             dest_path = f"{DEST_DIR}/{col[1]['colName']}/{doc['title']}"
             if not os.path.exists(dest_path):
                 os.makedirs(dest_path)
+
+            # Create destination folder for images.
+            if DOWNLOAD_IMAGES:
+                dest_path_images = (f"{DEST_DIR_IMAGES}/{col[1]['colName']}/"
+                                    f"{doc['title']}")
+                if not os.path.exists(dest_path_images):
+                    os.makedirs(dest_path_images)
 
             for page in pages['pageList']['pages']:
                 # Determine the latest transcript.
@@ -105,6 +128,24 @@ def main():
                 else:
                     path = f'{dest_path}/{filename_latest}'
                 download_pagexml(url_latest, path)
+
+                # Download the image of the page.
+                if DOWNLOAD_IMAGES:
+                    filename_image = page['imgFileName']
+                    if col[1]['colName'] in COLNAME_TRAINING:
+                        folder_image = (f"{doc['title']}_"
+                                        f"{str(page['pageNr']).zfill(3)}"
+                                        )
+                        if not os.path.exists(
+                            f'{dest_path_images}/{folder_image}'
+                            ):
+                            os.makedirs(f'{dest_path_images}/{folder_image}')
+                        path_image = (f'{dest_path_images}/{folder_image}/'
+                                      f'{filename_image}'
+                                      )
+                    else:
+                        path_image = f'{dest_path_images}/{filename_image}'
+                    download_image(url=page['url'], path=path_image)
 
 
 if __name__ == "__main__":

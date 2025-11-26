@@ -361,3 +361,29 @@ def download_pagexml(url, path, n_retry=60):
             download_pagexml(url, path, n_retry)
         else:
             response.raise_for_status()
+
+
+def download_image(url, path, n_retry=60):
+    """Download a image file.
+
+    Args:
+        url (str): Url to a image file.
+        path (str): Target filepath to store the image file.
+        n_retry (int): Number of retries by request error.
+
+    Returns:
+        None.
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        with open(path, "wb") as file:
+            file.write(response.content)
+    except:
+        if n_retry > 0:
+            n_retry -= 1
+            time.sleep(60)
+            download_image(url, path, n_retry)
+        else:
+            response.raise_for_status()
