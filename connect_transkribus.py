@@ -61,17 +61,35 @@ def list_documents(sid, colid):
         raise
 
 
-def get_document_content(colid, docid, sid):
+def get_document_content(colid, docid, sid, n_retry=60):
     # Get content of a specific document
 
-    r = requests.get("https://transkribus.eu/TrpServer/rest/collections/{}/{}/fulldoc?JSESSIONID={}".format(colid,
-                                                                                                            docid,
-                                                                                                            sid))
-    if r.status_code == requests.codes.ok:
-        return r.json()
-    else:
-        logging.error(f'documentID or collectionID invalid? {r}')
-        raise
+    try:
+        r = requests.get(
+            "https://transkribus.eu/TrpServer/rest/collections/{}/{}/fulldoc?JSESSIONID={}".format(
+                colid,
+                docid,
+                  sid)
+                  )
+        if r.status_code == requests.codes.ok:
+            return r.json()
+        else:
+            if n_retry > 0:
+                n_retry -= 1
+                time.sleep(60)
+                return get_document_content(colid, docid, sid, n_retry)
+            else:
+                logging.error(f'documentID or collectionID invalid? {r}')
+                raise
+    except requests.ConnectionError as err:
+        # Retry if the connection went lost.
+        if n_retry > 0:
+            n_retry -= 1
+            time.sleep(60)
+            return get_document_content(colid, docid, sid, n_retry)
+        else:
+            logging.error(f'Connection error: {err}')
+            raise
 
 
 def get_page_xml_url(doc_content, page_nr, page_version):
