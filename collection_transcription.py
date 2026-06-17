@@ -54,9 +54,9 @@ COLL_DROP = [
     ]
 
 # CSV file, which contains per line a docId of documents to be filtered.
-DOC_FILTER_DIR = './document_filter.csv'  # TODO: P2PaLA, Linefinder, HTR (8110 pages)
-# DOC_FILTER_DIR = 'document_filter_other.csv'  # TODO: HTR (0 pages)
-# DOC_FILTER_DIR = 'document_filter_further.csv'  # TODO: P2PaLA, Linefinder, HTR (5303 pages)
+DOC_FILTER_DIR = './data/document_filter.csv'
+# DOC_FILTER_DIR = './data/document_filter_other.csv'
+# DOC_FILTER_DIR = './data/document_filter_further.csv'
 
 # List of page status (of latest page version) that are dropped within this
 # process.
